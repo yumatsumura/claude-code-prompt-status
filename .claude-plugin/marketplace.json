@@ -1,0 +1,5 @@
+{
+  "name": "local-mods",
+  "owner": { "name": "yu-matsumura" },
+  "plugins": [{ "name": "prompt-status", "source": "./" }]
+}
