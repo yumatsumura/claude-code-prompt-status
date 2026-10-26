@@ -17,8 +17,10 @@ const BAND = {
 } as const
 
 // Nothing sits beneath the plugin: each hook here stands for the engine.
-const engine = (on: On) => {
-  on('session.root', () => ({ value: '/Users/me/Desktop/ai-projects/claude-mods-sandbox' }))
+const PROJECT = '/Users/me/Desktop/ai-projects/claude-mods-sandbox'
+
+const engine = (on: On, root = { path: PROJECT }) => {
+  on('session.root', () => ({ value: root.path }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({
     value: { startedAt: 0, context: { window: 200_000 }, rateLimits: [] },
@@ -31,6 +33,7 @@ const engine = (on: On) => {
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('classic.CwdChanged', () => ({}))
 }
 
 const lineOf = async ($: Engine) => {
@@ -85,4 +88,17 @@ test('the band yields to a survey', async ($, on) => {
   })
   expect((await ui.find({ type: 'Text' }))?.text).toBe('survey')
   await ui.unmount()
+})
+
+test('a session started in a spare folder shows the project it moves into', async ($, on) => {
+  const root = { path: '/Users/me/.claude/spares/spare-ufKHrU' }
+  engine(on, root)
+  await $.session.start({ cwd: root.path, surface: 'terminal', isInteractive: true })
+
+  root.path = PROJECT
+  await $.classic.CwdChanged({ old_cwd: '/Users/me/.claude/spares/spare-ufKHrU', new_cwd: PROJECT })
+
+  const line = await lineOf($)
+  expect(line).toContain('claude-mods-sandbox')
+  expect(line).not.toContain('spare-ufKHrU')
 })

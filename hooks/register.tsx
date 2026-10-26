@@ -161,11 +161,27 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The context fill and the rate-limit windows, pushed after each turn.
+  // A host's directory change (the desktop app starting a session in a spare
+  // folder, then moving it into the project) runs no command.
+  on('classic.CwdChanged', async ($, e, next) => {
+    const ran = await next(e)
+
+    try {
+      await refresh($)
+    } catch {
+      // The bar keeps its last figures until the next measure.
+    }
+
+    return ran
+  })
+
+  // The context fill and the rate-limit windows, pushed after each turn; the
+  // directory too, should a move have gone unannounced.
   on('session.measure', async ($, e, next) => {
     const { tokens, window, percent } = e.context
 
     await patch($, {
+      dir: basename(await $.session.root()),
       context: { tokens, window, percent },
       rateLimits: e.rateLimits.map(({ kind, percentUsed, resetsAt }) => ({
         kind,
