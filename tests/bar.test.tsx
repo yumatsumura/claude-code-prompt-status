@@ -155,3 +155,26 @@ test("/effort's picker shows the level once the settings hold it", async ($, on)
 
   expect(await lineOf($)).toContain('Opus 5.5 · max')
 })
+
+test("/effort's pick for this session alone shows from its output row", async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  await $.session.append({
+    message: {
+      type: 'system',
+      name: 'local_command',
+      content: [
+        {
+          type: 'text',
+          text: '<local-command-stdout>Set effort level to max (this session only): Maximum capability</local-command-stdout>',
+        },
+      ],
+    },
+    door: 'notice',
+    origin: { kind: 'composer' },
+    uuid: 'row-1',
+  })
+
+  expect(await lineOf($)).toContain('Opus 5.5 · max')
+})

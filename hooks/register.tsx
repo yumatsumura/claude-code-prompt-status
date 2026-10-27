@@ -79,6 +79,22 @@ const effortFromSettings = async ($: Dollar, model: string | null) => {
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
+// `/effort`'s output names the level it set, a pick for this session alone
+// included, which the settings never see.
+const EFFORT_SET = /Set effort level to (low|medium|high|xhigh|max)\b/
+
+const effortInRow = (content: readonly { type: string; text?: string }[]) => {
+  for (const block of content) {
+    const match = block.type === 'text' && block.text ? EFFORT_SET.exec(block.text) : null
+
+    if (match) {
+      return match[1]
+    }
+  }
+
+  return undefined
+}
+
 // The effort is read from the settings only where they can be newer than the
 // last request's (the start, a model switch, a settings write): elsewhere they
 // would undo a level `--effort` or `/effort` set for this session alone.
@@ -181,6 +197,23 @@ export const register: Register = on => {
     }
 
     return ran
+  })
+
+  // The command's output row, kept once the picker has closed.
+  on('session.append', async ($, e, next) => {
+    const stored = await next(e)
+    const isCommandRow = e.door === 'command' || e.door === 'notice'
+    const level = isCommandRow && e.agentId === undefined ? effortInRow(e.message.content) : undefined
+
+    if (level) {
+      try {
+        await patch($, { effort: level })
+      } catch {
+        // The next request's step corrects it.
+      }
+    }
+
+    return stored
   })
 
   // `/effort`'s picker keeps the level in the settings once picked.
