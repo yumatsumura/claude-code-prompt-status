@@ -16,10 +16,16 @@ const BAND = {
   },
 } as const
 
+// A command the person typed at the prompt.
+const TYPED = {
+  origin: { kind: 'composer' },
+  presentation: { isFullscreen: true, columns: 160 },
+} as const
+
 // Nothing sits beneath the plugin: each hook here stands for the engine.
 const PROJECT = '/Users/me/Desktop/ai-projects/claude-mods-sandbox'
 
-const engine = (on: On, root = { path: PROJECT }) => {
+const engine = (on: On, root = { path: PROJECT }, settings = { level: 'xhigh' }) => {
   on('session.root', () => ({ value: root.path }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({
@@ -28,7 +34,10 @@ const engine = (on: On, root = { path: PROJECT }) => {
   on('settings.read', () => ({
     value: {
       effortLevel: 'high',
-      modelSettings: { 'claude-opus-5-5': { effortLevel: 'xhigh' } },
+      modelSettings: {
+        'claude-opus-5-5': { effortLevel: settings.level },
+        'claude-sonnet-5-5': { effortLevel: 'medium' },
+      },
     },
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -101,4 +110,48 @@ test('a session started in a spare folder shows the project it moves into', asyn
   const line = await lineOf($)
   expect(line).toContain('claude-mods-sandbox')
   expect(line).not.toContain('spare-ufKHrU')
+})
+
+test('a model switch shows the new model and the level its settings keep', async ($, on) => {
+  engine(on)
+  on('classic.PostModelSwitch', () => ({}))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  await $.classic.PostModelSwitch({
+    from_model: 'claude-opus-5-5',
+    to_model: 'claude-sonnet-5-5',
+    requested_model: 'sonnet',
+    source: 'picker',
+    context_tokens: 0,
+    prompt_cache_warm: false,
+    cache_ttl: '5m',
+    estimated_cache_write_usd: 0,
+    pricing: 'catalog',
+  })
+
+  expect(await lineOf($)).toContain('Sonnet 5.5 · medium')
+})
+
+test('/effort with a level shows it at once; another command leaves it', async ($, on) => {
+  engine(on)
+  on('command.run', () => ({}))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  await $.command.run({ command: 'effort', args: 'low', ...TYPED })
+  expect(await lineOf($)).toContain('Opus 5.5 · low')
+
+  await $.command.run({ command: 'context', args: '', ...TYPED })
+  expect(await lineOf($)).toContain('Opus 5.5 · low')
+})
+
+test("/effort's picker shows the level once the settings hold it", async ($, on) => {
+  const settings = { level: 'xhigh' }
+  engine(on, { path: PROJECT }, settings)
+  on('classic.ConfigChange', () => ({}))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  settings.level = 'max'
+  await $.classic.ConfigChange({ source: 'user_settings' })
+
+  expect(await lineOf($)).toContain('Opus 5.5 · max')
 })

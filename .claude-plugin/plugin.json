@@ -1,6 +1,6 @@
 {
   "name": "prompt-status",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "入力欄の上に、ディレクトリ名・コンテキスト使用量・利用上限・モデルとエフォートを1行で表示する",
   "types": "./types/index.d.ts"
 }

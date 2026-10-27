@@ -77,7 +77,12 @@ const effortFromSettings = async ($: Dollar, model: string | null) => {
   return typeof level === 'string' ? level : null
 }
 
-const refresh = async ($: Dollar) => {
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+
+// The effort is read from the settings only where they can be newer than the
+// last request's (the start, a model switch, a settings write): elsewhere they
+// would undo a level `--effort` or `/effort` set for this session alone.
+const refresh = async ($: Dollar, { withEffort = false } = {}) => {
   const [root, model, usage] = await Promise.all([
     $.session.root(),
     $.session.model(),
@@ -88,7 +93,7 @@ const refresh = async ($: Dollar) => {
   await patch($, {
     dir: basename(root),
     model,
-    effort: await effortFromSettings($, model),
+    ...(withEffort ? { effort: await effortFromSettings($, model) } : {}),
     context: { tokens, window, percent },
     rateLimits: usage.rateLimits.map(({ kind, percentUsed, resetsAt }) => ({
       kind,
@@ -156,9 +161,41 @@ const limitText = (limit: RateLimit) => {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await refresh($)
+    await refresh($, { withEffort: true })
 
     return next(e)
+  })
+
+  // Every switch, a picker's included, whose command has returned before the
+  // pick. The new model runs at the level its settings keep for it.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    const ran = await next(e)
+
+    try {
+      await patch($, {
+        model: e.to_model,
+        effort: await effortFromSettings($, e.to_model),
+      })
+    } catch {
+      // The next request's step corrects it.
+    }
+
+    return ran
+  })
+
+  // `/effort`'s picker keeps the level in the settings once picked.
+  on('classic.ConfigChange', async ($, e, next) => {
+    const ran = await next(e)
+
+    if (e.source !== 'skills') {
+      try {
+        await patch($, { effort: await effortFromSettings($, await $.session.model()) })
+      } catch {
+        // The next request's step corrects it.
+      }
+    }
+
+    return ran
   })
 
   // A host's directory change (the desktop app starting a session in a spare
@@ -209,9 +246,15 @@ export const register: Register = on => {
   // The command has already run by the refresh: a failed refresh must not undo it.
   on('command.run', async ($, e, next) => {
     const ran = await next(e)
+    const level = e.args.trim().toLowerCase()
 
     try {
       await refresh($)
+
+      // `/effort low` names the level outright; a bare `/effort` opens its picker.
+      if (e.command === 'effort' && EFFORTS.includes(level)) {
+        await patch($, { effort: level })
+      }
     } catch {
       // The bar keeps its last figures until the next measure.
     }
